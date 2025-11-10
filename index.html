@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trình xem GLB - Phong302</title>
+
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+        #info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 16px;
+            text-shadow: 2px 2px 4px #000000;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        Dùng W / A / S / D để di chuyển | Dí và kéo chuột để quay
+    </div>
+
+    <canvas id="webgl-canvas"></canvas>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        // Import các thư viện cần thiết
+        import * as THREE from 'three';
+        import { FlyControls } from 'three/addons/controls/FlyControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        // 1. Cài đặt cơ bản
+        const canvas = document.getElementById('webgl-canvas');
+        const infoElement = document.getElementById('info');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x333333); // Nền xám tối
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 2, 5); // Đặt camera lùi lại và cao lên một chút
+
+        const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.outputColorSpace = THREE.SRGBColorSpace; // Hiển thị màu sắc chính xác cho GLB
+
+        // 2. Ánh sáng
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); 
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 2.5); 
+        directionalLight.position.set(3, 10, 5);
+        scene.add(directionalLight);
+
+        // Thêm một cái lưới để dễ định hướng
+        const gridHelper = new THREE.GridHelper(50, 50);
+        scene.add(gridHelper);
+
+        // 3. Điều khiển (W/A/S/D và dí chuột)
+        const controls = new FlyControls(camera, renderer.domElement);
+        controls.movementSpeed = 3.0; // Tốc độ di chuyển
+        controls.rollSpeed = Math.PI / 10;
+        controls.autoForward = false;
+        controls.dragToLook = true; // **Quan trọng: Dí chuột để quay**
+
+        // 4. TẢI MÔ HÌNH GLB
+        const loader = new GLTFLoader();
+        
+        // Đây là đường dẫn sau khi bạn bật GitHub Pages
+        const modelURL = "https://duyhocit.github.io/Phong302/Phong302/phong302.glb"; 
+
+        loader.load(modelURL, (gltf) => {
+            // Khi tải xong
+            const object = gltf.scene;
+            
+            // Tự động căn giữa và zoom mô hình
+            const box = new THREE.Box3().setFromObject(object);
+            const center = box.getCenter(new THREE.Vector3());
+            object.position.sub(center); // Căn giữa mô hình
+            
+            scene.add(object);
+            console.log("Tải mô hình thành công!");
+            infoElement.innerText = "Tải thành công! Sẵn sàng di chuyển.";
+
+        }, (xhr) => {
+            // Theo dõi tiến trình
+            const percent = (xhr.loaded / xhr.total * 100).toFixed(0);
+            infoElement.innerText = `Đang tải mô hình... ${percent}%`;
+        }, (error) => {
+            // Khi có lỗi
+            console.error("LỖI KHI TẢI FILE GLB:", error);
+            infoElement.innerText = "LỖI: Không thể tải mô hình. Kiểm tra Console (F12).";
+        });
+
+        // 5. Vòng lặp Animation
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            controls.update(delta); // Cập nhật điều khiển
+            renderer.render(scene, camera);
+        }
+
+        // 6. Xử lý khi thay đổi kích thước cửa sổ
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Bắt đầu!
+        animate();
+    </script>
+</body>
+</html>
