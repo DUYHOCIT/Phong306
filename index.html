@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Phòng của tôi :))</title>
+    <title>Trình xem GLB - Unreal Style Pro</title>
     <style>
-        body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Arial, sans-serif; }
         canvas { display: block; }
         #overlay {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.7);
+            background: rgba(0,0,0,0.8);
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -18,6 +18,7 @@
             color: white;
             z-index: 10;
             cursor: pointer;
+            text-align: center;
         }
         #info {
             position: absolute;
@@ -27,23 +28,34 @@
             color: #ffffff;
             pointer-events: none;
             text-shadow: 1px 1px 2px black;
+            font-size: 14px;
+            line-height: 1.5;
         }
-        .key { font-weight: bold; color: #ffff00; }
+        .key { font-weight: bold; color: #ffff00; background: #333; padding: 2px 5px; border-radius: 3px; }
+        #speed-bar {
+            margin-top: 5px;
+            font-weight: bold;
+            color: #00ff00;
+        }
     </style>
 </head>
 <body>
     <div id="overlay">
-        <h1>CLICK CHUỘT ĐỂ BẮT ĐẦU</h1>
-        <p>(ESC để thoát chuột)</p>
+        <h1>CLICK ĐỂ BẮT ĐẦU</h1>
+        <p>W/S: Bay tới/lui (theo hướng nhìn)</p>
+        <p>A/D: Sang ngang | E/Q: Lên/Xuống (Thẳng đứng)</p>
+        <p>🖱️ Lăn chuột: Chỉnh tốc độ bay</p>
+        <p style="color: #aaa; margin-top: 20px;">(Bấm ESC để hiện chuột)</p>
     </div>
 
     <div id="info">
-        <span class="key">W/A/S/D</span>: Di chuyển | 
-        <span class="key">E</span>: Lên | 
-        <span class="key">Q</span>: Xuống | 
-        <span class="key">Shift</span>: Chạy nhanh
+        <span class="key">W/S</span> Tiến/Lùi | 
+        <span class="key">A/D</span> Trái/Phải | 
+        <span class="key">E</span> Lên | 
+        <span class="key">Q</span> Xuống
         <br>
-        <span id="status">Đang tải...</span>
+        <div id="speed-bar">Tốc độ bay: 15.0</div>
+        <span id="status" style="color: #ccc; font-size: 12px;">Đang tải...</span>
     </div>
 
     <canvas id="webgl-canvas"></canvas>
@@ -62,55 +74,70 @@
         import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-        // 1. CẤU HÌNH CƠ BẢN
+        // --- CẤU HÌNH ---
+        let flySpeed = 15.0; // Tốc độ cơ bản
+        const MIN_SPEED = 1.0;
+        const MAX_SPEED = 100.0;
+        
+        // --- 1. SETUP SCENE ---
         const canvas = document.getElementById('webgl-canvas');
         const overlay = document.getElementById('overlay');
         const statusEl = document.getElementById('status');
+        const speedEl = document.getElementById('speed-bar');
         
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x222222); // Màu nền xám đậm kiểu Blender
-        scene.fog = new THREE.Fog(0x222222, 10, 100); // Thêm sương mù cho chiều sâu
+        scene.background = new THREE.Color(0x222222);
+        scene.fog = new THREE.Fog(0x222222, 20, 200);
 
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 2, 5); // Vị trí mặc định
-
+        
         const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
-        renderer.shadowMap.enabled = true; // Bật bóng đổ cho đẹp
+        renderer.shadowMap.enabled = true;
 
-        // 2. ÁNH SÁNG & LƯỚI (KIỂU BLENDER)
-        // Lưới vô tận (giả lập bằng lưới to)
+        // --- 2. ÁNH SÁNG & MÔI TRƯỜNG ---
         const gridHelper = new THREE.GridHelper(200, 200, 0x444444, 0x333333);
         scene.add(gridHelper);
 
-        // Ánh sáng môi trường
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
         scene.add(ambientLight);
 
-        // Ánh sáng mặt trời (có bóng)
         const dirLight = new THREE.DirectionalLight(0xffffff, 2);
-        dirLight.position.set(10, 20, 10);
+        dirLight.position.set(10, 30, 20);
         dirLight.castShadow = true;
         scene.add(dirLight);
 
-        // 3. ĐIỀU KHIỂN FPS (POINTER LOCK)
+        // --- 3. ĐIỀU KHIỂN & SỰ KIỆN ---
         const controls = new PointerLockControls(camera, document.body);
 
-        // Xử lý ẩn/hiện menu khi click
-        overlay.addEventListener('click', () => {
-            controls.lock();
+        // Click để bắt đầu
+        overlay.addEventListener('click', () => controls.lock());
+        controls.addEventListener('lock', () => overlay.style.display = 'none');
+        controls.addEventListener('unlock', () => overlay.style.display = 'flex');
+
+        // Xử lý lăn chuột để chỉnh tốc độ
+        document.addEventListener('wheel', (event) => {
+            if (controls.isLocked) {
+                // Lăn lên (deltaY < 0) -> Tăng tốc
+                // Lăn xuống (deltaY > 0) -> Giảm tốc
+                const zoomFactor = 1.1; // Mỗi nấc tăng/giảm 10%
+                
+                if (event.deltaY < 0) {
+                    flySpeed *= zoomFactor;
+                } else {
+                    flySpeed /= zoomFactor;
+                }
+
+                // Giới hạn tốc độ
+                flySpeed = Math.max(MIN_SPEED, Math.min(flySpeed, MAX_SPEED));
+                
+                // Hiển thị ra màn hình (làm tròn 1 số lẻ)
+                speedEl.innerText = `Tốc độ bay: ${flySpeed.toFixed(1)}`;
+            }
         });
 
-        controls.addEventListener('lock', () => {
-            overlay.style.display = 'none';
-        });
-
-        controls.addEventListener('unlock', () => {
-            overlay.style.display = 'flex';
-        });
-
-        // 4. XỬ LÝ DI CHUYỂN (WASD + QE)
+        // Xử lý phím bấm
         const moveState = {
             forward: false, backward: false,
             left: false, right: false,
@@ -118,20 +145,20 @@
             sprint: false
         };
 
-        const onKeyDown = (event) => {
-            switch (event.code) {
+        const onKeyDown = (e) => {
+            switch (e.code) {
                 case 'KeyW': moveState.forward = true; break;
                 case 'KeyS': moveState.backward = true; break;
                 case 'KeyA': moveState.left = true; break;
                 case 'KeyD': moveState.right = true; break;
-                case 'KeyE': moveState.up = true; break;
-                case 'KeyQ': moveState.down = true; break;
+                case 'KeyE': moveState.up = true; break; // Lên
+                case 'KeyQ': moveState.down = true; break; // Xuống
                 case 'ShiftLeft': moveState.sprint = true; break;
             }
         };
 
-        const onKeyUp = (event) => {
-            switch (event.code) {
+        const onKeyUp = (e) => {
+            switch (e.code) {
                 case 'KeyW': moveState.forward = false; break;
                 case 'KeyS': moveState.backward = false; break;
                 case 'KeyA': moveState.left = false; break;
@@ -145,16 +172,14 @@
         document.addEventListener('keydown', onKeyDown);
         document.addEventListener('keyup', onKeyUp);
 
-        // 5. TẢI MÔ HÌNH GLB
+        // --- 4. TẢI MÔ HÌNH ---
         const loader = new GLTFLoader();
         const modelURL = "https://cdn.jsdelivr.net/gh/DUYHOCIT/Phong302@main/phong302.glb";
 
-        statusEl.innerText = "Đang tải mô hình...";
-
         loader.load(modelURL, (gltf) => {
             const object = gltf.scene;
-
-            // Xử lý đổ bóng cho mô hình
+            
+            // Bật bóng đổ cho tất cả mesh
             object.traverse((child) => {
                 if (child.isMesh) {
                     child.castShadow = true;
@@ -162,38 +187,29 @@
                 }
             });
 
-            // Tự động căn giữa mô hình
+            // Auto-center và đặt lên mặt sàn
             const box = new THREE.Box3().setFromObject(object);
             const center = box.getCenter(new THREE.Vector3());
             const size = box.getSize(new THREE.Vector3());
             
-            // Đưa mô hình về gốc tọa độ
-            object.position.sub(center); 
-            // Nâng mô hình lên mặt lưới (nếu đáy nằm dưới đất)
+            object.position.sub(center);
             object.position.y += size.y / 2;
-
             scene.add(object);
 
-            // Đặt Camera lùi ra xa dựa trên kích thước mô hình để chắc chắn nhìn thấy
+            // Đặt camera lùi ra xa
             const maxDim = Math.max(size.x, size.y, size.z);
             camera.position.set(0, maxDim * 0.5, maxDim * 1.5);
             camera.lookAt(0, 0, 0);
 
-            statusEl.innerText = "Tải xong! Click màn hình để xem.";
-            console.log("Model loaded", size);
-
-        }, (xhr) => {
-            const percent = (xhr.loaded / xhr.total * 100).toFixed(0);
-            statusEl.innerText = `Đang tải... ${percent}%`;
-        }, (error) => {
-            console.error(error);
-            statusEl.innerText = "Lỗi tải file! Kiểm tra link hoặc Console.";
+            statusEl.innerText = "Đã tải xong!";
+        }, undefined, (err) => {
+            console.error(err);
+            statusEl.innerText = "Lỗi tải file!";
         });
 
-        // 6. VÒNG LẶP ANIMATION (Xử lý vật lý di chuyển)
+        // --- 5. LOGIC CHUYỂN ĐỘNG (PHYSICS) ---
         const clock = new THREE.Clock();
-        const velocity = new THREE.Vector3();
-        const direction = new THREE.Vector3();
+        const velocity = new THREE.Vector3(); // Vận tốc quán tính
 
         function animate() {
             requestAnimationFrame(animate);
@@ -201,34 +217,41 @@
             const delta = clock.getDelta();
 
             if (controls.isLocked) {
-                // Tốc độ di chuyển
-                const actualSpeed = moveState.sprint ? 20.0 : 8.0; 
-                // Ma sát (để dừng lại từ từ)
-                velocity.x -= velocity.x * 10.0 * delta;
-                velocity.z -= velocity.z * 10.0 * delta;
-                velocity.y -= velocity.y * 10.0 * delta;
-
-                direction.z = Number(moveState.forward) - Number(moveState.backward);
-                direction.x = Number(moveState.right) - Number(moveState.left);
-                direction.y = Number(moveState.up) - Number(moveState.down);
-
-                direction.normalize(); // Đảm bảo đi chéo không nhanh hơn đi thẳng
-
-                if (moveState.forward || moveState.backward) velocity.z -= direction.z * actualSpeed * 10.0 * delta;
-                if (moveState.left || moveState.right) velocity.x -= direction.x * actualSpeed * 10.0 * delta;
-                if (moveState.up || moveState.down) velocity.y -= direction.y * actualSpeed * 10.0 * delta;
-
-                // Di chuyển Camera
-                controls.moveRight(-velocity.x * delta);
-                controls.moveForward(-velocity.z * delta);
+                // Tính toán tốc độ thực tế (Shift để nhân 2.5 lần tốc độ hiện tại)
+                const actualSpeed = moveState.sprint ? flySpeed * 2.5 : flySpeed;
                 
-                // Xử lý bay lên/xuống (PointerLock không hỗ trợ native nên phải chỉnh position)
+                // 1. Ma sát (Giảm tốc từ từ khi nhả phím)
+                const damping = 10.0;
+                velocity.x -= velocity.x * damping * delta; // Trục ngang
+                velocity.z -= velocity.z * damping * delta; // Trục hướng nhìn
+                velocity.y -= velocity.y * damping * delta; // Trục lên xuống
+
+                // 2. Tính lực đẩy từ phím
+                // W/S: Hướng nhìn (Z)
+                if (moveState.forward) velocity.z -= actualSpeed * delta;
+                if (moveState.backward) velocity.z += actualSpeed * delta;
+
+                // A/D: Sang ngang (X)
+                if (moveState.left) velocity.x -= actualSpeed * delta;
+                if (moveState.right) velocity.x += actualSpeed * delta;
+
+                // E/Q: Lên xuống (Y)
+                if (moveState.up) velocity.y += actualSpeed * delta;
+                if (moveState.down) velocity.y -= actualSpeed * delta;
+
+                // 3. Áp dụng chuyển động
+                // translateZ/X: Di chuyển tương đối theo hướng Camera quay
+                camera.translateZ(velocity.z * delta);
+                camera.translateX(velocity.x * delta);
+                
+                // position.y: Di chuyển tuyệt đối theo trục thẳng đứng (Thang máy)
                 camera.position.y += velocity.y * delta;
             }
 
             renderer.render(scene, camera);
         }
 
+        // Resize cửa sổ
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
